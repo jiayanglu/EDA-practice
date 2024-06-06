@@ -1,0 +1,202 @@
+---
+title: "EDA_practice"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Task 1: Read in the data and Modify
+
+```{r}
+library(tidyverse)
+mat_data <- read_csv2("student-mat.csv")
+por_data <- read_csv2("student-por.csv")
+
+combine_data <- inner_join(mat_data, 
+                           por_data,
+                           by = join_by(school, sex, age, address, famsize, Pstatus, Medu, Fedu, Mjob, Fjob, reason, guardian, traveltime, studytime, failures, schoolsup, famsup, activities, nursery, higher, internet, romantic, famrel, freetime, goout, Dalc, Walc, health),
+                           suffix = c("_mat", "_por"))
+mat_data <- mutate(mat_data, across(c(address, reason, internet, higher), as.factor))
+por_data <- mutate(por_data, across(c(address, reason, internet, higher), as.factor))
+combine_data <- mutate(combine_data, across(c(address, reason, internet, higher), as.factor))
+```
+
+# Task 2: Summarize the Data (Very Basic EDA)
+
+## Categorical variables
+
+```{r}
+str(combine_data)
+sum_na <- function(col) {
+  sum(is.na(col))
+}
+combine_data |>
+  summarize(across(everything(), sum_na)) |>
+  View()
+
+#baseR table()
+one_way <- table("internet at home?" = combine_data$internet)
+one_way
+
+two_way <- table("internet at home?" = combine_data$internet,
+                 "address" = combine_data$address)
+two_way
+
+three_way <- table("internet at home?" = combine_data$internet,
+                   "address" = combine_data$address,
+                   "want higher ed?" = combine_data$higher)
+three_way
+
+pre_filtered <- filter(combine_data, reason == "reputation")
+table("internet at home?" = pre_filtered$internet,
+      "address" = pre_filtered$address)
+
+condition_table <- table("internet at home?" = combine_data$internet,
+                         "address" = combine_data$address,
+                         "why this school?" = combine_data$reason)
+condition_table[,,"reputation"]
+
+#dyplyr
+combine_data |>
+  group_by(reason, address) |>
+  summarise(count = n()) |>
+  pivot_wider(names_from = address, values_from = count)
+
+#bar graph
+combine_barplot <- combine_data |>
+  group_by(reason, address) |>
+  summarize(count = n())
+combine_barplot
+
+#stacked
+ggplot(combine_barplot, aes(x=reason, y=count, fill=address)) +
+  geom_bar(stat="identity") +
+  xlab("Reason for choosing school") +
+  ylab("Student count") +
+  ggtitle("Reason for choosing school by Address Type") +
+  scale_fill_discrete(name="Address", labels=c("Rural", "Urban"))
+
+#side-by-side
+ggplot(combine_barplot, aes(x=reason, y=count, fill=address)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("Reason for choosing school") +
+  ylab("Student count") +
+  ggtitle("Reason for choosing school by Address Type") +
+  scale_fill_discrete(name="Address", labels=c("Rural", "Urban"))
+```
+
+## Numeric variables (and across groups)
+
+```{r}
+combine_data |>
+  summarize(across(matches("G[0-9]"), 
+            list("mean" = ~ mean(.x, na.rm = TRUE),
+                 "sd" = ~ sd(.x, na.rm =TRUE)),
+            .names = "{.col}_{.fn}"))
+
+combine_data |>
+  filter(higher == "yes") |>
+  summarize(across(matches("G[0-9]"), 
+            list("mean" = ~ mean(.x, na.rm = TRUE),
+                 "sd" = ~ sd(.x, na.rm =TRUE)),
+            .names = "{.col}_{.fn}"))
+
+combine_data |>
+  group_by(address) |>
+  summarize(across(matches("G[0-9]"), 
+            list("mean" = ~ mean(.x, na.rm = TRUE),
+                 "sd" = ~ sd(.x, na.rm =TRUE)),
+            .names = "{.col}_{.fn}"))
+
+combine_data |>
+  group_by(address, reason) |>
+  summarize(across(matches("G[0-9]"), 
+            list("mean" = ~ mean(.x, na.rm = TRUE),
+                 "sd" = ~ sd(.x, na.rm =TRUE)),
+            .names = "{.col}_{.fn}"))
+
+library(ggcorrplot)
+combine_data |>
+  select(age, ends_with("_mat"), ends_with("_por")) |>
+  select(- paid_mat, - paid_por) |>
+  cor() |>
+  ggcorrplot(hc.order = TRUE, type = "lower", lab = TRUE)
+
+#histograms
+ggplot(combine_data, aes(x=G3_por, fill = address)) +
+  geom_histogram(alpha=0.3, position="identity") +
+  ggtitle("Final Portuguese grades (G3) by Address Type") +
+  xlab("Final Grade")
+
+ggplot(combine_data, aes(x=G3_mat, fill = address)) +
+  geom_histogram(alpha=0.3, position="identity") +
+  ggtitle("Final Math grades (G3) by Address Type") +
+  xlab("Final Grade")
+
+#boxplot
+ggplot(combine_data, aes(x=G3_por, fill = address)) +
+  geom_boxplot() +
+  ggtitle("Final Portuguese grades (G3) by Address Type") +
+  xlab("Final Grade")
+
+ggplot(combine_data, aes(x=G3_mat, fill = address)) +
+  geom_boxplot() +
+  ggtitle("Final Math grades (G3) by Address Type") +
+  xlab("Final Grade")
+
+#kernel density plot
+ggplot(combine_data, aes(x=G3_por, fill = address)) +
+  geom_density(alpha=0.3) +
+  ggtitle("Final Portuguese grades (G3) by Address Type") +
+  xlab("Final Grade")
+
+ggplot(combine_data, aes(x=G3_mat, fill = address)) +
+  geom_density(alpha=0.3) +
+  ggtitle("Final Math grades (G3) by Address Type") +
+  xlab("Final Grade")
+
+#scatter plot
+ggplot(combine_data, aes(x=G1_mat, y=G3_mat, color = address)) +
+  geom_jitter(alpha=0.6) +
+  ggtitle("Final Math grades (G3) vs first-term grades (G1) by Address Type") +
+  xlab("First term grade Grade") +
+  ylab("Final grade")
+
+ggplot(combine_data, aes(x=G3_por, y=G3_mat, color = address)) +
+  geom_jitter(alpha=0.6) +
+  ggtitle("Final Math grades (G3) vs final Portuguese grades by Address Type") +
+  xlab("First Math Grade") +
+  ylab("Final Portuguese grade")
+
+#faceting on one variable
+ggplot(combine_data, aes(x=G1_mat, y=G3_mat)) +
+  geom_jitter(alpha=0.6) +
+  ggtitle("Final Math grades (G3) vs first-term grades (G1) by Address Type") +
+  xlab("First term grade Grade") +
+  ylab("Final grade") +
+  facet_wrap(~ reason)
+
+ggplot(combine_data, aes(x=G3_por, y=G3_mat)) +
+  geom_jitter(alpha=0.6) +
+  ggtitle("Final Math grades (G3) vs final Portuguese grades by Address Type") +
+  xlab("First Math Grade") +
+  ylab("Final Portuguese grade") +
+  facet_wrap(~ reason)
+
+#faceting on two variables
+ggplot(combine_data, aes(x=G1_mat, y=G3_mat)) +
+  geom_jitter(alpha=0.6) +
+  ggtitle("Final Math grades (G3) vs first-term grades (G1) by Address Type") +
+  xlab("First term grade Grade") +
+  ylab("Final grade") +
+  facet_wrap(address ~ higher)
+
+ggplot(combine_data, aes(x=G3_por, y=G3_mat)) +
+  geom_jitter(alpha=0.6) +
+  ggtitle("Final Math grades (G3) vs final Portuguese grades by Address Type") +
+  xlab("First Math Grade") +
+  ylab("Final Portuguese grade") +
+  facet_wrap(address ~ higher)
+```
+
